@@ -17,7 +17,16 @@ const OWNER = process.env.GITHUB_USERNAME;
 const REPO = process.env.GITHUB_REPO;
 const BRANCH = 'main';
 
-// 1. Endpoint Upload File (Tự động phân loại images/ hoặc storage/)
+// Hàm hỗ trợ lấy đường dẫn chuẩn từ req.params
+const getCleanPath = (params) => {
+  const rawPath = params.filePath || params[0];
+  if (Array.isArray(rawPath)) {
+    return rawPath.join('/');
+  }
+  return rawPath;
+};
+
+// 1. Endpoint Upload File
 app.post('/upload', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
@@ -52,10 +61,10 @@ app.post('/upload', upload.single('file'), async (req, res) => {
   }
 });
 
-// 2. Endpoint Lấy / Xem File qua API Server (Sử dụng cú pháp Express v5)
+// 2. Endpoint Lấy / Xem File
 app.get('/files/{*filePath}', async (req, res) => {
   try {
-    const filePath = req.params.filePath || req.params[0];
+    const filePath = getCleanPath(req.params);
 
     if (!filePath) {
       return res.status(400).json({ error: 'Thiếu đường dẫn file cần lấy' });
@@ -75,6 +84,7 @@ app.get('/files/{*filePath}', async (req, res) => {
     else if (filePath.endsWith('.webp')) res.setHeader('Content-Type', 'image/webp');
     else if (filePath.endsWith('.gif')) res.setHeader('Content-Type', 'image/gif');
     else if (filePath.endsWith('.pdf')) res.setHeader('Content-Type', 'application/pdf');
+    else if (filePath.endsWith('.mp3')) res.setHeader('Content-Type', 'audio/mpeg');
 
     res.send(fileBuffer);
   } catch (error) {
@@ -86,10 +96,10 @@ app.get('/files/{*filePath}', async (req, res) => {
   }
 });
 
-// 3. Endpoint Xóa File (Sử dụng cú pháp Express v5)
+// 3. Endpoint Xóa File
 app.delete('/delete/{*filePath}', async (req, res) => {
   try {
-    const filePath = req.params.filePath || req.params[0];
+    const filePath = getCleanPath(req.params);
 
     if (!filePath) {
       return res.status(400).json({ error: 'Thiếu đường dẫn file cần xóa' });
