@@ -13,37 +13,39 @@ const octokit = new Octokit({
   auth: process.env.GITHUB_TOKEN,
 });
 
-// Thay đổi thông tin Username và Repo của bạn tại đây
 const OWNER = process.env.GITHUB_USERNAME; 
 const REPO = process.env.GITHUB_REPO;
 const BRANCH = 'main';
 
+// 1. Endpoint Upload File (Tự động lưu vào images/ hoặc storage/)
 app.post('/upload', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Vui lòng chọn file' });
     }
 
-    // Đặt tên file bằng Timestamp để tránh trùng
+    const folder = req.file.mimetype.startsWith('image/') ? 'images' : 'storage';
     const fileName = `${Date.now()}-${req.file.originalname}`;
-    const filePath = `uploads/${fileName}`;
+    const filePath = `${folder}/${fileName}`;
     const fileContentBase64 = req.file.buffer.toString('base64');
 
     const response = await octokit.rest.repos.createOrUpdateFileContents({
       owner: OWNER,
       repo: REPO,
       path: filePath,
-      message: `Upload ${fileName} via API`,
+      message: `Upload ${fileName} to ${folder} via API`,
       content: fileContentBase64,
       branch: BRANCH,
     });
 
-    // Link CDN tốc độ cao qua jsDelivr
-    const cdnUrl = `https://cdn.jsdelivr.net/gh/${OWNER}/${REPO}@${BRANCH}/${filePath}`;
+    // Trả về link lấy qua API của Server
+    const proxyUrl = `${req.protocol}://${req.get('host')}/files/${filePath}`;
+    // Hoặc nếu muốn dùng CDN trực tiếp: `https://cdn.jsdelivr.net/gh/${OWNER}/${REPO}@${BRANCH}/${filePath}`
 
     res.json({
       success: true,
-      url: cdnUrl,
+      folder: folder,
+      url: proxyUrl,
       githubUrl: response.data.content.html_url
     });
   } catch (error) {
@@ -52,6 +54,80 @@ app.post('/upload', upload.single('file'), async (req, res) => {
   }
 });
 
+// 2. Endpoint Lấy / Xem File qua API Server
+app.get('/files/*', async (req, res) => {
+  try {
+    const filePath = req.params[0];
+
+    if (!filePath) {
+      return res.status(400).json({ error: 'Thiếu đường dẫn file cần lấy' });
+    }
+
+    const response = await octokit.rest.repos.getContent({
+      owner: OWNER,
+      repo: REPO,
+      path: filePath,
+      ref: BRANCH,
+    });
+
+    const fileBuffer = Buffer.from(response.data.content, 'base64');
+
+    // Thiết lập Content-Type để xem trực tiếp trên trình duyệt
+    if (filePath.endsWith('.png')) res.setHeader('Content-Type', 'image/png');
+    else if (filePath.endsWith('.jpg') || filePath.endsWith('.jpeg')) res.setHeader('Content-Type', 'image/jpeg');
+    else if (filePath.endsWith('.webp')) res.setHeader('Content-Type', 'image/webp');
+    else if (filePath.endsWith('.gif')) res.setHeader('Content-Type', 'image/gif');
+    else if (filePath.endsWith('.pdf')) res.setHeader('Content-Type', 'application/pdf');
+
+    res.send(fileBuffer);
+  } catch (error) {
+    console.error(error);
+    if (error.status === 404) {
+      return res.status(404).json({ error: 'File không tồn tại' });
+    }
+    res.status(500).json({ error: 'Lỗi khi tải file từ GitHub' });
+  }
+});
+
+// 3. Endpoint Xóa File
+app.delete('/delete/*', async (req, res) => {
+  try {
+    const filePath = req.params[0];
+
+    if (!filePath) {
+      return res.status(400).json({ error: 'Thiếu đường dẫn file cần xóa' });
+    }
+
+    const { data: fileData } = await octokit.rest.repos.getContent({
+      owner: OWNER,
+      repo: REPO,
+      path: filePath,
+      ref: BRANCH,
+    });
+
+    await octokit.rest.repos.deleteFile({
+      owner: OWNER,
+      repo: REPO,
+      path: filePath,
+      message: `Delete ${filePath} via API`,
+      sha: fileData.sha,
+      branch: BRANCH,
+    });
+
+    res.json({
+      success: true,
+      message: `Đã xóa file ${filePath} thành công!`,
+    });
+  } catch (error) {
+    console.error(error);
+    if (error.status === 404) {
+      return res.status(404).json({ error: 'File không tồn tại trên GitHub' });
+    }
+    res.status(500).json({ error: 'Lỗi khi xóa file trên GitHub' });
+  }
+});
+
+// 4. Khởi chạy Server (Luôn đặt ở cuối cùng)
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
