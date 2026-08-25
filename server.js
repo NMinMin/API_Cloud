@@ -17,7 +17,7 @@ const OWNER = process.env.GITHUB_USERNAME;
 const REPO = process.env.GITHUB_REPO;
 const BRANCH = 'main';
 
-// 1. Endpoint Upload File (Tự động lưu vào images/ hoặc storage/)
+// 1. Endpoint Upload File (Tự động phân loại images/ hoặc storage/)
 app.post('/upload', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
@@ -38,9 +38,7 @@ app.post('/upload', upload.single('file'), async (req, res) => {
       branch: BRANCH,
     });
 
-    // Trả về link lấy qua API của Server
     const proxyUrl = `${req.protocol}://${req.get('host')}/files/${filePath}`;
-    // Hoặc nếu muốn dùng CDN trực tiếp: `https://cdn.jsdelivr.net/gh/${OWNER}/${REPO}@${BRANCH}/${filePath}`
 
     res.json({
       success: true,
@@ -54,10 +52,10 @@ app.post('/upload', upload.single('file'), async (req, res) => {
   }
 });
 
-// 2. Endpoint Lấy / Xem File qua API Server
-app.get('/files/*', async (req, res) => {
+// 2. Endpoint Lấy / Xem File qua API Server (Sử dụng cú pháp Express v5)
+app.get('/files/{*filePath}', async (req, res) => {
   try {
-    const filePath = req.params[0];
+    const filePath = req.params.filePath || req.params[0];
 
     if (!filePath) {
       return res.status(400).json({ error: 'Thiếu đường dẫn file cần lấy' });
@@ -72,7 +70,6 @@ app.get('/files/*', async (req, res) => {
 
     const fileBuffer = Buffer.from(response.data.content, 'base64');
 
-    // Thiết lập Content-Type để xem trực tiếp trên trình duyệt
     if (filePath.endsWith('.png')) res.setHeader('Content-Type', 'image/png');
     else if (filePath.endsWith('.jpg') || filePath.endsWith('.jpeg')) res.setHeader('Content-Type', 'image/jpeg');
     else if (filePath.endsWith('.webp')) res.setHeader('Content-Type', 'image/webp');
@@ -89,10 +86,10 @@ app.get('/files/*', async (req, res) => {
   }
 });
 
-// 3. Endpoint Xóa File
-app.delete('/delete/*', async (req, res) => {
+// 3. Endpoint Xóa File (Sử dụng cú pháp Express v5)
+app.delete('/delete/{*filePath}', async (req, res) => {
   try {
-    const filePath = req.params[0];
+    const filePath = req.params.filePath || req.params[0];
 
     if (!filePath) {
       return res.status(400).json({ error: 'Thiếu đường dẫn file cần xóa' });
@@ -127,7 +124,7 @@ app.delete('/delete/*', async (req, res) => {
   }
 });
 
-// 4. Khởi chạy Server (Luôn đặt ở cuối cùng)
+// 4. Khởi chạy Server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
